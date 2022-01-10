@@ -1,0 +1,457 @@
+---
+title: "Project_1"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+library(tidyverse)
+library(tidyr)
+```
+
+
+```{r, echo=FALSE}
+setwd("C:/Users/jongw/Documents/")   
+dataset <- data.frame(read.csv(file = "data.csv", header=T))
+
+
+keeps <- c("Value", "Position", "Finishing", "HeadingAccuracy", "SprintSpeed", "BallControl", "Dribbling", "ShotPower", "Acceleration", "Age", "Height")
+df <- dataset[keeps]
+df <- as_tibble(df)
+
+df1 <- df%>%filter(Position%in%c("LS", "ST", "RS", "LW", "LF", "CF", "RF", "RW"))
+```
+
+```{r, echo=FALSE}
+##changed the text market value to numerical value
+for(i in 1:length(df1$Value)){
+   split <- strsplit(df1$Value[i], "¬")[[1]]
+   split <- strsplit(split[2], "M")[[1]]
+   df1$Value[i] <- split[1]
+}
+
+df1$Value <- suppressWarnings(as.numeric(as.character(df1$Value)))
+```
+
+```{r, echo=FALSE}
+##change height to centimeter
+for(i in 1:length(df1$Height)){
+  split <- strsplit(df1$Height[i], "'")[[1]]
+  df1$Height[i]<-(as.numeric(split[1])*12 + as.numeric(split[2]))*2.54
+}
+df1$Height <- as.numeric(as.character(df1$Height))
+
+##split the data
+sample_size = floor(0.6*nrow(df1))
+set.seed(1)
+picked = sample(seq_len(nrow(df1)),size = sample_size)
+train = df1[picked,]
+val = df1[-picked,]
+
+```
+
+```{r}
+summary(train)
+```
+
+
+
+```{r, echo=FALSE}
+summary(train)
+
+par(mfrow=c(4,3))
+
+hist(train$Finishing, main = "Finishing", xlab = "Rating")
+
+hist(train$HeadingAccuracy, main = "Heading Accuracy", xlab = "Rating")
+
+hist(train$SprintSpeed, main = "Sprint Speed", xlab='Rating')
+
+hist(train$BallControl, main = "Ball Control", xlab='Rating')
+
+hist(train$Dribbling, main = "Dribbling", xlab='Rating')
+
+hist(train$ShotPower, main = "Shot Power", xlab='Rating')
+
+hist(train$Acceleration, main = "Acceleration", xlab='Rating')
+
+
+hist(train$Age, main = "Age", xlab='Age')
+
+hist(train$Value, main = "Players Market Value", xlab='value(Million Euro)')
+
+
+hist(train$Height, main="Players Height", xlab = "height(cm)")
+
+
+par(mfrow=c(1,1))
+boxplot(train$Finishing, train$HeadingAccuracy, train$SprintSpeed, train$BallControl, train$Dribbling, train$ShotPower, train$Acceleration, train$Value, train$Height, names = c("F", "HA", "SS", "BC", "D", "SP", "A", "V", "H"), main="Boxplot of predictors")
+
+
+```
+
+```{r}
+##drop na and market value of 0
+train <- train%>%drop_na()
+train$Value <- train$Value*10
+train$Value <- as.numeric(gsub("\\.", "", train$Value))
+train <- train[train$Value != 0, ]
+summary(train)
+```
+```{r}
+mod <- lm(Value ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + Dribbling + ShotPower + Acceleration + Age + Height, data=train)
+
+summary(mod)
+```
+```{r}
+##residual plots before transformation
+r <- resid(mod)
+
+pairs(train[c(3,4,5,6,7,8,9,10,11)], lower.panel = NULL)
+
+
+
+plot(train$Value ~ fitted(mod), main="Market Value versus Fitted Market Value", 
+     xlab="Fitted Market Value", ylab="Market Value")
+abline(a = 0, b = 1)
+lines(lowess(train$Value ~ fitted(mod)), lty=2)
+par(mfrow=c(2,2))
+plot(r ~ train$Acceleration, main = "Acceleration", xlab='Rating', ylab = "residual")
+plot(r ~ train$Height, main="Players Height", xlab = "height(cm)", ylab = "residual")
+
+qqnorm(r)
+qqline(r)
+
+plot(r ~ fitted(mod), main="title", xlab="Fitted", ylab="res.")
+
+plot(r ~ train$Finishing)
+plot(r ~ train$HeadingAccuracy)
+plot(r ~ train$SprintSpeed)
+plot(r ~ train$BallControl)
+plot(r ~ train$Dribbling)
+plot(r ~ train$ShotPower)
+plot(r ~ train$Acceleration, main = "Acceleration", xlab='Rating', ylab = "residual")
+plot(r ~ train$Age, main = "Age", xlab='Age', ylab = "residual")
+plot(r ~ train$Height, main="Players Height", xlab = "height(cm)", ylab = "residual")
+
+qqnorm(r)
+qqline(r)
+```
+```{r}
+library(car)
+```
+
+
+```{r}
+##boxcox
+train <- as.data.frame(train)
+p <- powerTransform(cbind(train[,1], train[,3], train[,4], train[,5], train[,6], train[,7], train[,8], train[,9], train[,10], train[,11])~1, family="bcnPower")
+
+summary(p)
+```
+```{r}
+##log transform response
+train$logValue <- log(train$Value)
+mod2 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + Dribbling + ShotPower + Acceleration + Age + Height, data=train)
+
+summary(mod2)
+```
+```{r}
+##transformed residuals plots
+r <- resid(mod2)
+
+pairs(train[c(3,4,5,6,7,8,9,10,11)], lower.panel = NULL)
+
+
+plot(train$logValue ~ fitted(mod2), main="Market Value versus Fitted Market Value", 
+     xlab="Fitted Market Value", ylab="Market Value")
+abline(a = 0, b = 1)
+lines(lowess(train$logValue ~ fitted(mod2)), lty=2)
+
+par(mfrow=c(2,2))
+
+
+plot(r ~ fitted(mod2), main="Fitted vs Residual", xlab="Fitted", ylab="res.")
+
+plot(r ~ train$Finishing, main = "Finishing", xlab = "Rating", ylab = "residual")
+plot(r ~ train$HeadingAccuracy, main = "Heading Accuracy", xlab = "Rating", ylab = "residual")
+plot(r ~ train$SprintSpeed, main = "Sprint Speed", xlab='Rating', ylab = "residual")
+plot(r ~ train$BallControl, main = "Ball Control", xlab='Rating', ylab = "residual")
+plot(r ~ train$Dribbling, main = "Dribbling", xlab='Rating', ylab = "residual")
+plot(r ~ train$ShotPower, main = "Shot Power", xlab='Rating', ylab = "residual")
+
+#plot(r ~ train$Age, main = "Age", xlab='Age', ylab = "residual")
+#plot(r ~ train$Acceleration, main = "Acceleration", xlab='Rating', ylab = "residual")
+#plot(r ~ train$Height, main="Players Height", xlab = "height(cm)", ylab = "residual")
+
+#qqnorm(r)
+#qqline(r)
+```
+
+```{r}
+
+##influential points
+n <- length(train$logValue)
+p <- length(coef(mod2))-1
+
+h <- hatvalues(mod2)
+hcut <- 2*(p+1)/n
+
+w1 <- which(h > hcut)
+w1
+```
+```{r}
+r <- rstandard(mod2)
+w2 <- which(r < -2 | r > 2)
+w2
+```
+```{r}
+# find the cooks distance and compare to cutoff
+Dcutoff <- qf(0.5, p+1, n-p-1)
+D <- cooks.distance(mod2)
+which(D > Dcutoff)
+
+# find the DFFITS and compare to cutoff
+DFFITScut <- 2*sqrt((p+1)/n)
+dfs <- dffits(mod2)
+w3 <- which(abs(dfs) > DFFITScut)
+w3
+
+# find the DFBETAS and compare to cutoff (notice the dimension of DFBETAS)
+DFBETAcut <- 2/sqrt(n)
+dfb <- dfbetas(mod2)
+w4 <- which(abs(dfb[,1]) > DFBETAcut)
+w4
+w5 <- which(abs(dfb[,2]) > DFBETAcut)
+w5
+w6 <- which(abs(dfb[,3]) > DFBETAcut)
+w6
+w7 <- which(abs(dfb[,4]) > DFBETAcut)
+w7
+w8 <- which(abs(dfb[,5]) > DFBETAcut)
+w8
+w9 <- which(abs(dfb[,6]) > DFBETAcut)
+w9
+w10 <- which(abs(dfb[,7]) > DFBETAcut)
+w10
+w11 <- which(abs(dfb[,8]) > DFBETAcut)
+w11
+w12 <- which(abs(dfb[,9]) > DFBETAcut)
+w12
+
+```
+
+```{r}
+vif(mod2)
+```
+
+```{r}
+##trying our different model
+mod4 <- lm(logValue ~ HeadingAccuracy + SprintSpeed + BallControl + Dribbling + ShotPower + Acceleration + Age + Height, data=train)
+mod5 <- lm(logValue ~ Finishing +  SprintSpeed + BallControl + Dribbling + ShotPower + Acceleration + Age + Height, data=train)
+mod6 <- lm(logValue ~ Finishing + HeadingAccuracy + BallControl + Dribbling + ShotPower + Acceleration + Age + Height, data=train)
+mod7 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + Dribbling + ShotPower + Acceleration + Age + Height, data=train)
+mod8 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + ShotPower + Acceleration + Age + Height, data=train)
+mod9 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + Dribbling + Acceleration + Age + Height, data=train)
+mod10 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + Dribbling + ShotPower + Age + Height, data=train)
+mod11 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + Dribbling + ShotPower + Acceleration + Height, data=train)
+mod12 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + Dribbling + ShotPower + Acceleration + Age , data=train)
+
+s2 <- summary(mod2)
+s4 <- summary(mod4)
+s5 <- summary(mod5)
+s6 <- summary(mod6)
+s7 <- summary(mod7)
+s8 <- summary(mod8)
+s9 <- summary(mod9)
+s10 <- summary(mod10)
+s11 <- summary(mod11)
+s12 <- summary(mod12)
+```
+
+```{r}
+rsq <-c(s2$adj.r.squared, s4$adj.r.squared, s5$adj.r.squared, s6$adj.r.squared,s7$adj.r.squared, s8$adj.r.squared, s9$adj.r.squared, s10$adj.r.squared, s11$adj.r.squared, s12$adj.r.squared)
+aic <- c(AIC(mod2), AIC(mod4), AIC(mod5), AIC(mod6), AIC(mod7), AIC(mod8), AIC(mod9), AIC(mod10), AIC(mod11), AIC(mod12))
+bic <- c(BIC(mod2),BIC(mod4), BIC(mod5), BIC(mod6), BIC(mod7), BIC(mod8), BIC(mod9), BIC(mod10), BIC(mod11), BIC(mod12))
+
+cbind(rsq, aic, bic)
+
+vif(mod4)
+vif(mod5)
+vif(mod6)
+vif(mod7)
+vif(mod8)
+vif(mod9)
+vif(mod10)
+vif(mod11)
+vif(mod12)
+```
+```{r}
+mod13 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + Dribbling + ShotPower + Age + Height, data=train)
+mod14 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + ShotPower + Age + Height, data=train)
+```
+
+```{r}
+##Deciding on the reduced model
+AIC(mod13)
+AIC(mod14)
+BIC(mod13)
+BIC(mod14)
+s13<-summary(mod13)
+s14<-summary(mod14)
+s13$adj.r.squared
+s14$adj.r.squared
+vif(mod13)
+vif(mod14)
+```
+
+```{r}
+anova(mod13, mod2)
+```
+```{r}
+##checking t test of reduced model
+summary(mod14)
+```
+
+```{r}
+##remove non significant coefficient
+mod15 <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + ShotPower + Age, data=train)
+
+anova(mod15, mod14)
+```
+
+```{r}
+summary(mod15)
+AIC(mod15)
+BIC(mod15)
+s15<-summary(mod15)
+s15$adj.r.squared
+vif(mod15)
+```
+
+
+```{r}
+##cleaning validation dataset
+val <- val%>%drop_na()
+val$Value <- val$Value*10
+val$Value <- as.numeric(gsub("\\.", "", val$Value))
+val <- val[val$Value != 0, ]
+summary(val)
+```
+
+
+
+```{r}
+val$logValue = log(val$Value)
+mod_v <- lm(logValue ~ Finishing + HeadingAccuracy + SprintSpeed + BallControl + ShotPower + Age, data=val)
+
+```
+
+```{r}
+##summary of validation model and train model based on the train model transformation
+summary(mod_v)
+summary(mod15)
+```
+
+
+```{r}
+mod15
+mod_v
+s15<- summary(mod_v)
+s15$adj.r.squared
+
+```
+```{r}
+##influenctial points of train model
+n <- length(train$logValue)
+p <- length(coef(mod15))-1
+
+h <- hatvalues(mod15)
+hcut <- 2*(p+1)/n
+
+w1 <- which(h > hcut)
+w1
+```
+```{r}
+r <- rstandard(mod15)
+w2 <- which(r < -2 | r > 2)
+w2
+```
+```{r}
+# find the cooks distance and compare to cutoff
+Dcutoff <- qf(0.5, p+1, n-p-1)
+D <- cooks.distance(mod15)
+which(D > Dcutoff)
+
+# find the DFFITS and compare to cutoff
+DFFITScut <- 2*sqrt((p+1)/n)
+dfs <- dffits(mod15)
+w3 <- which(abs(dfs) > DFFITScut)
+w3
+
+# find the DFBETAS and compare to cutoff (notice the dimension of DFBETAS)
+DFBETAcut <- 2/sqrt(n)
+dfb <- dfbetas(mod15)
+w4 <- which(abs(dfb[,1]) > DFBETAcut)
+w4
+w5 <- which(abs(dfb[,2]) > DFBETAcut)
+w5
+w6 <- which(abs(dfb[,3]) > DFBETAcut)
+w6
+w7 <- which(abs(dfb[,4]) > DFBETAcut)
+w7
+w8 <- which(abs(dfb[,5]) > DFBETAcut)
+w8
+w9 <- which(abs(dfb[,6]) > DFBETAcut)
+w9
+```
+```{r}
+##influential points of validation dataset
+n <- length(val$logValue)
+p <- length(coef(mod_v))-1
+
+h <- hatvalues(mod_v)
+hcut <- 2*(p+1)/n
+
+w1 <- which(h > hcut)
+w1
+```
+```{r}
+r <- rstandard(mod_v)
+w2 <- which(r < -2 | r > 2)
+w2
+```
+```{r}
+# find the cooks distance and compare to cutoff
+Dcutoff <- qf(0.5, p+1, n-p-1)
+D <- cooks.distance(mod_v)
+which(D > Dcutoff)
+
+# find the DFFITS and compare to cutoff
+DFFITScut <- 2*sqrt((p+1)/n)
+dfs <- dffits(mod_v)
+w3 <- which(abs(dfs) > DFFITScut)
+w3
+
+# find the DFBETAS and compare to cutoff (notice the dimension of DFBETAS)
+DFBETAcut <- 2/sqrt(n)
+dfb <- dfbetas(mod_v)
+w4 <- which(abs(dfb[,1]) > DFBETAcut)
+w4
+w5 <- which(abs(dfb[,2]) > DFBETAcut)
+w5
+w6 <- which(abs(dfb[,3]) > DFBETAcut)
+w6
+w7 <- which(abs(dfb[,4]) > DFBETAcut)
+w7
+w8 <- which(abs(dfb[,5]) > DFBETAcut)
+w8
+w9 <- which(abs(dfb[,6]) > DFBETAcut)
+w9
+```
+
